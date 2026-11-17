@@ -1,0 +1,438 @@
+{
+  "name": "AI Meeting Automation- AI integration",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a84e2d35-bcc6-4284-a6a3-f6c03e7e113e",
+              "name": "meeting_notes",
+              "value": "={{ $json.meeting_notes }}",
+              "type": "string"
+            },
+            {
+              "id": "29b7eca1-4087-49ba-b413-03bc33a19b33",
+              "name": "meeting_date",
+              "value": "={{ $json['Meeting Date'] }}",
+              "type": "string"
+            },
+            {
+              "id": "498bf72e-2fee-49b0-abb6-81ca6b59c73f",
+              "name": "meeting_name",
+              "value": "={{ $json.meeting_name }}",
+              "type": "string"
+            },
+            {
+              "id": "30cc12ac-6233-4532-9d00-aaf449454ef6",
+              "name": "prd_required",
+              "value": "={{ $json['PRD '] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -32,
+        -48
+      ],
+      "id": "b3f4c6fe-2506-4da2-a788-d93396501a90",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "dataSourceId": {
+          "__rl": true,
+          "value": "4193d5e9-3419-8081-acb0-000b42fc09de",
+          "mode": "list",
+          "cachedResultName": "AI Meeting-to-Task Automation",
+          "cachedResultUrl": "https://app.notion.com/p/4193d5e934198058a3d6db33fa9c1a0d"
+        },
+        "title": "={{ $json.task_name }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Due date|date",
+              "includeTime": false,
+              "date": "={{ $json.due_date }}"
+            },
+            {
+              "key": "Meeting Name|rich_text",
+              "textContent": "={{ $json.meeting_name }}"
+            },
+            {
+              "key": "Meeting date|date",
+              "includeTime": false,
+              "date": "={{ $json.meeting_date }}"
+            },
+            {
+              "key": "Status|status",
+              "statusValue": "Not started"
+            },
+            {
+              "key": "Assigned to- name|rich_text",
+              "textContent": "={{ $json.assigned_to }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 3,
+      "position": [
+        880,
+        80
+      ],
+      "id": "ebc10709-491b-4864-bea8-aba6d2d6f974",
+      "name": "Create a database page",
+      "credentials": {
+        "notionApi": {
+          "id": "hTzjB6RVvhhTSqvq",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:11434/api/generate",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "qwen2.5:1.5b"
+            },
+            {
+              "name": "stream",
+              "value": "={{false}}"
+            },
+            {
+              "name": "format",
+              "value": "json"
+            },
+            {
+              "name": "prompt",
+              "value": "=\n{{\n`You are an expert meeting intelligence and action-item extraction assistant.\n\nYour job is to read a meeting transcript and extract EVERY distinct, actionable task accurately.\n\nMEETING METADATA:\nMeeting Name: ${$json.meeting_name}\nMeeting Date: ${$json.meeting_date}\n\nTRANSCRIPT:\n${$json.meeting_notes}\n\nYOUR OBJECTIVE:\nConvert the conversation into a structured list of tasks that can be assigned and tracked in a project management system.\n\nEXTRACTION INSTRUCTIONS:\n\n1. IDENTIFY ALL TASKS\n- Read the entire transcript before extracting tasks.\n- Identify every specific action, deliverable, follow-up or responsibility.\n- A task can be mentioned once or repeated later in the meeting.\n- Check the final part of the transcript, where responsibilities may be summarised.\n- Do not miss tasks simply because they are discussed informally.\n\n2. IDENTIFY TASK OWNERS\n- Identify the person explicitly responsible for completing each task.\n- Use the person's name exactly as stated in the transcript.\n- If a person volunteers for a task, assign it to that person.\n- If someone assigns a task to another person, use the assigned person's name.\n- If the owner cannot be determined, use \"Unassigned\".\n- Never guess an owner.\n\n3. IDENTIFY DEADLINES\n- Extract the actual deadline mentioned for each task.\n- Convert all deadlines to YYYY-MM-DD.\n- Use the meeting date's year when the deadline does not specify a year.\n- Example: Meeting date is 2026-08-18. \"August 22nd\" means 2026-08-22.\n- \"By next Friday\" or similar relative dates must be calculated from the meeting date.\n- Never use the meeting date as a task deadline unless explicitly stated.\n- If no deadline is mentioned, return an empty string.\n- Do not confuse a follow-up meeting date with a task deadline.\n\n4. HANDLE CONVERSATIONAL CONTEXT\n- Combine related deliverables assigned to the same person when they form one logical task.\n- Keep unrelated tasks separate, even when assigned to the same person.\n- Remove duplicate mentions of the same task.\n- Exclude hypothetical ideas, optional suggestions and general discussion that do not result in an assigned action.\n- Do not create tasks for work explicitly postponed or rejected.\n\n5. TASK DESCRIPTION\n- Write concise, specific task descriptions.\n- Include important details about the expected deliverable.\n- Start descriptions with an action verb wherever possible.\n- Do not include the owner's name in task_name.\n\n6. MEETING METADATA\n- Use the exact meeting name supplied above for every task.\n- Use the supplied meeting date for every task.\n- Format meeting_date as YYYY-MM-DD.\n- Do not infer a different meeting date from the transcript.\n\n7. FINAL VERIFICATION\nBefore returning the result:\n- Review the entire transcript again.\n- Check that every assigned action item is included.\n- Check that every owner is correct.\n- Check every deadline against the conversation.\n- Remove duplicates.\n- Ensure that no discussion-only items have become tasks.\n\nOUTPUT REQUIREMENTS:\nReturn valid JSON only.\nDo not include markdown, explanations, comments or text outside the JSON.\nDo not add any fields other than those specified below.\nIf no actionable tasks exist, return an empty tasks array.\n\nREQUIRED JSON FORMAT:\n{\n  \"tasks\": [\n    {\n      \"task_name\": \"Concise action description\",\n      \"assigned_to\": \"Person's name or Unassigned\",\n      \"due_date\": \"YYYY-MM-DD or empty string\",\n      \"meeting_name\": \"${$json.meeting_name}\",\n      \"meeting_date\": \"${$json.meeting_date}\"\n    }\n  ]\n}`\n}}\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        416,
+        80
+      ],
+      "id": "bc61bda3-3a56-4ee7-8fdd-532e5aebeab4",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst data = JSON.parse($input.first().json.response);\n\nfunction normalizeDate(date, meetingDate) {\n  if (!date || date === \"Invalid date\") return \"\";\n\n  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) return date;\n\n  const year = Number(meetingDate?.slice(0, 4)) || 2026;\n  const clean = date.replace(/(\\d+)(st|nd|rd|th)/gi, \"$1\");\n\n  const parsed = new Date(`${clean}, ${year}`);\n\n  if (isNaN(parsed.getTime())) return \"\";\n\n  return [\n    parsed.getFullYear(),\n    String(parsed.getMonth() + 1).padStart(2, \"0\"),\n    String(parsed.getDate()).padStart(2, \"0\")\n  ].join(\"-\");\n}\n\nreturn data.tasks.map(task => ({\n  json: {\n    task_name: task.task_name,\n    assigned_to: task.assigned_to,\n    due_date: normalizeDate(task.due_date, task.meeting_date),\n    meeting_name: task.meeting_name,\n    meeting_date: task.meeting_date\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        80
+      ],
+      "id": "97c98e15-0fd2-4845-9da9-00a122ea683a",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "formTitle": "AI Meeting-to-Task Automation",
+        "formDescription": "Upload or paste your meeting transcript to automatically extract action items and send them to Notion.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Meeting Transcript",
+              "fieldName": "meeting_notes",
+              "placeholder": "Paste your transcript here",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Meeting Name",
+              "fieldName": "meeting_name",
+              "placeholder": "Project/ Meeting Name",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Meeting Date",
+              "fieldType": "date",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "PRD ",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Yes"
+                  },
+                  {
+                    "option": "No"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -256,
+        -48
+      ],
+      "id": "0926bd88-6610-4cb7-91c3-43269080d53b",
+      "name": "On form submission",
+      "webhookId": "082513ca-2dba-4fa5-959e-a5351b708fe8"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "deecf4bd-faa9-4d1e-ae99-afe96485fa92",
+              "leftValue": "={{ $json.prd_required }}",
+              "rightValue": "Yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        192,
+        -48
+      ],
+      "id": "10dae24a-0e1d-47f4-9a82-04ab6eb7b632",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:11434/api/generate",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "qwen2.5:1.5b"
+            },
+            {
+              "name": "stream",
+              "value": "={{false}}"
+            },
+            {
+              "name": "format",
+              "value": "json"
+            },
+            {
+              "name": "prompt",
+              "value": "=\n{{\n`You are a professional Product Manager.\n\nCreate a structured Product Requirements Document using the extracted meeting information below.\n\nPROJECT: ${$json.project_name}\nMEETING: ${$json.meeting_name}\nMEETING DATE: ${$json.meeting_date}\n\nEXTRACTED INFORMATION:\n${JSON.stringify($json)}\n\nSTRICT RULES:\n- Use only the information provided.\n- Do not make assumptions or add external knowledge.\n- Do not invent features, requirements, metrics, priorities or timelines.\n- Write TBD wherever information is missing.\n- Keep proposed ideas separate from agreed decisions.\n- Do not omit any section.\n- Keep the document concise, professional and easy to review.\n- Version must be vA.\n- Status must be Draft.\n\nGENERATE THE PRD IN THIS EXACT FORMAT:\n\n# PRODUCT REQUIREMENTS DOCUMENT (PRD)\n\n**Product / Feature:**\n**Owner:**\n**Version:** vA\n**Date:** ${$json.meeting_date}\n**Status:** Draft\n**Platform:**\n\n## 1. Overview & Problem Statement\n- Product Overview\n- Problem Statement\n- Business Impact\n- Pain Points & Root Causes\n\n## 2. Target Users & User Stories\n- Target Personas\n- User Stories (ID, User Story)\n\n## 3. Proposed Solution & Feature Breakdown\n- Proposed Solution\n- Feature Breakdown (Feature, Description, Pain Points Addressed, Expected Outcome)\n- User Journey\n\n## 4. Functional Requirements & Acceptance Criteria\n- Functional Requirements (ID, Requirement, Priority)\n- Acceptance Criteria\n- Non-functional Requirements\n- Edge Cases & Error Handling\n\n## 5. Feature Prioritization & MVP Scope\n- ICE Score (Impact, Confidence, Effort, Score, Priority)\n- MVP vs Future Scope\n\n## 6. Success Metrics & Experimentation\n- Key Performance Indicators (Metric, Definition, Baseline, Target)\n- Analytics & Event Tracking\n- Experimentation Plan\n- Guardrail Metrics\n\n## 7. Implementation & Rollout Plan\n- Implementation Phases\n- Dependencies & Stakeholders\n\n## 8. Assumptions, Risks & Open Questions\n- Assumptions (only explicitly stated; otherwise write None explicitly stated)\n- Risks & Mitigation\n- Feedback & Iteration\n- Open Questions\n\nOUTPUT:\nReturn valid JSON only, using this structure:\n{\n  \"prd_content\": \"Complete PRD in Markdown format\"\n}\n\nDo not add any other fields or explanatory text.\nEnsure valid JSON escaping.`\n}}\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        416,
+        -208
+      ],
+      "id": "16341b0e-f314-4421-b17b-b6af33d5058f",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst response = JSON.parse($input.first().json.response);\n\nconst prd = response.prd_content;\n\nif (!prd) {\n  throw new Error(\"PRD content was not generated.\");\n}\n\nconst input = $(\"Edit Fields\").first().json;\n\nconst project = input.project_name || \"Project\";\nconst meeting = input.meeting_name || \"Meeting\";\nconst date = input.meeting_date || \"\";\n\nconst safeName = (value) =>\n  String(value).replace(/[\\\\/:*?\"<>|]/g, \"-\").trim();\n\nconst filename = `${safeName(project)}_${safeName(meeting)}_${date}_vA`;\n\nreturn [{\n  json: {\n    project_name: project,\n    meeting_name: meeting,\n    meeting_date: date,\n    prd_title: filename,\n    prd_content: prd,\n    version: \"vA\",\n    status: \"Draft\"\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        -208
+      ],
+      "id": "6ba9e41c-5d13-4257-95a4-39ff056822e5",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "dataSourceId": {
+          "__rl": true,
+          "value": "41b3d5e9-3419-80b8-8dc7-000bc06b83eb",
+          "mode": "list",
+          "cachedResultName": "Automation- PRD",
+          "cachedResultUrl": "https://app.notion.com/p/41b3d5e93419807a9c89cd3ff57a8de6"
+        },
+        "title": "={{ $json.prd_title }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Project/ Client |rich_text",
+              "textContent": "={{ $json.project_name }}"
+            },
+            {
+              "key": "Meeting Name|rich_text",
+              "textContent": "={{ $json.meeting_name }}"
+            },
+            {
+              "key": "Meeting Date|date",
+              "date": "={{ $json.meeting_date }}"
+            },
+            {
+              "key": "Version|rich_text",
+              "textContent": "vA"
+            },
+            {
+              "key": "PRD Name|title",
+              "title": "={{ $json.prd_title }}"
+            },
+            {
+              "key": "PRD content|rich_text",
+              "textContent": "={{ $json.prd_content }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 3,
+      "position": [
+        880,
+        -208
+      ],
+      "id": "21be2a28-9f2c-42bf-9315-2f0b5697c9d0",
+      "name": "Create a database page1",
+      "credentials": {
+        "notionApi": {
+          "id": "hTzjB6RVvhhTSqvq",
+          "name": "Notion account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Create a database page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Create a database page1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "47dd0c27-8515-42f1-a4c4-c55ffe0e1e10",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a324fddf4d2049654965139739e30856415b749667caeb4b242ad65f8e38c1b0"
+  },
+  "nodeGroups": [],
+  "id": "zzeWbdQqojL95wAq",
+  "tags": []
+}
